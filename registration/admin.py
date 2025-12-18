@@ -25,6 +25,9 @@ from .models import CandidateProfile
 from results.models import CandidateAnswer
 from questions.models import QuestionPaper
 
+# Use a custom admin index template to show a single export button.
+admin.site.index_template = "registration/admin_index.html"
+
 
 # -------------------------
 # Custom Admin Form with Validation
@@ -571,6 +574,15 @@ class CandidateProfileAdmin(admin.ModelAdmin):
         """Check if a given field actually exists on CandidateProfile."""
         return any(f.name == field_name for f in CandidateProfile._meta.get_fields())
 
+    def get_model_perms(self, request):
+        """
+        Hide CandidateProfile from the admin sidebar and app index for PO users,
+        while still allowing them to hit the custom export URLs directly.
+        """
+        if self._is_po(request):
+            return {}
+        return super().get_model_perms(request)
+
     # ---------- changelist (top buttons/links area) ----------
     def changelist_view(self, request, extra_context=None):
         # Turn on inline editing only for PO (important: set attribute here)
@@ -768,11 +780,7 @@ class CandidateProfileAdmin(admin.ModelAdmin):
                 name="registration_candidateprofile_export_all_marks",
             ),
             # JS endpoint that injects the sidebar buttons (served via admin view to allow permission check)
-            path(
-                "candidate-export-links.js",
-                self.admin_site.admin_view(self.export_links_js),
-                name="registration_candidateprofile_export_links_js",
-            ),
+            # NOTE: we no longer serve the sidebar-injection JS; export is done from Dashboard.
         ]
         return custom_urls + urls
 
@@ -796,202 +804,4 @@ class CandidateProfileAdmin(admin.ModelAdmin):
         qs = self.get_queryset(request)
         return export_marks_excel(self, request, qs)
 
-    def export_links_js(self, request):
-        """
-        Serve a small JS file that:
-          - fixes header checkbox / row checkbox behavior (for all admin users)
-          - adds basic tooltips (title attributes) to sidebar links (for all)
-          - for PO users only: removes header anchors to export endpoints and inserts sidebar export buttons (DAT / Images / Marks)
-        """
-        # Determine if current user is PO
-        is_po = self._is_po(request)
-
-        # Build URLs & labels (used only when is_po)
-        dat_url = reverse("admin:registration_candidateprofile_export_all_dat")
-        img_url = reverse("admin:registration_candidateprofile_export_all_images")
-        marks_url = reverse("admin:registration_candidateprofile_export_all_marks")
-
-        dat_label = export_candidates_dat.short_description or "Export All Answers"
-        img_label = export_candidate_images.short_description or "Export All Photos"
-        marks_label = export_marks_excel.short_description or "Export All Marks"
-
-        candidate_changelist = reverse("admin:registration_candidateprofile_changelist")
-
-        # JS template:
-        js_template = r"""
-(function(){
-    try {
-        function onReady(fn) {
-            if (document.readyState !== 'loading') {
-                fn();
-            } else {
-                document.addEventListener('DOMContentLoaded', fn);
-            }
-        }
-
-        onReady(function() {
-
-            /********** 1) FIX header / row checkboxes (run for all users) **********/
-            try {
-                var rowCheckboxes = Array.prototype.slice.call(document.querySelectorAll('input.action-select, input[name="_selected_action"]'));
-                if (rowCheckboxes.length) {
-                    rowCheckboxes.forEach(function(cb) {
-                        var style = window.getComputedStyle(cb);
-                        if (style && style.display !== 'none') {
-                            cb.checked = true;
-                            cb.dispatchEvent(new Event('change', {bubbles:true}));
-                        }
-                    });
-                    var master = document.getElementById('action-toggle') || document.querySelector('thead input[type="checkbox"]');
-                    if (master) {
-                        var allChecked = rowCheckboxes.every(function(c){ return c.checked; });
-                        master.checked = allChecked;
-                        master.dispatchEvent(new Event('change', {bubbles:true}));
-                        master.addEventListener('click', function() {
-                            var checked = !!master.checked;
-                            rowCheckboxes.forEach(function(c) {
-                                c.checked = checked;
-                                c.dispatchEvent(new Event('change', {bubbles:true}));
-                            });
-                        });
-                    } else {
-                        var headerLabel = document.querySelector('thead th .action-checkbox, thead th .action-select');
-                        if (headerLabel) {
-                            headerLabel.addEventListener('click', function() {
-                                var anyUnchecked = rowCheckboxes.some(function(c){ return !c.checked; });
-                                var newState = anyUnchecked;
-                                rowCheckboxes.forEach(function(c) {
-                                    c.checked = newState;
-                                    c.dispatchEvent(new Event('change', {bubbles:true}));
-                                });
-                            });
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('selection-fix error', e);
-            }
-
-            /********** 2) Add basic tooltips to sidebar links (run for all users) **********/
-            try {
-                var sidebarAnchors = Array.prototype.slice.call(document.querySelectorAll('#sidebar a, .app-list a'));
-                sidebarAnchors.forEach(function(a) {
-                    try {
-                        var txt = (a.textContent || a.innerText || '').trim();
-                        if (txt && !a.getAttribute('title')) {
-                            a.setAttribute('title', txt);
-                        }
-                    } catch(e) { }
-                });
-            } catch (e) {
-                console.error('sidebar-tooltip error', e);
-            }
-
-            /********** 3) PO-only actions: remove header export links and inject sidebar buttons **********/
-            var isPo = {IS_PO};
-            if (isPo) {
-                try {
-                    var removeSelectors = ['a[href*="{DAT_URL}"]','a[href*="{IMG_URL}"]','a[href*="{MARKS_URL}"]'];
-                    removeSelectors.forEach(function(sel) {
-                        var nodes = document.querySelectorAll(sel);
-                        nodes.forEach(function(n) {
-                            if (n && n.parentNode) n.parentNode.removeChild(n);
-                        });
-                    });
-                } catch (e) {}
-
-                try {
-                    var targetHref = "{CANDIDATE_CHANGELIST}";
-                    var anchors = Array.prototype.slice.call(document.querySelectorAll('a'));
-                    var targetAnchor = null;
-                    for (var i=0;i<anchors.length;i++) {
-                        var a = anchors[i];
-                        try { var href = a.getAttribute('href') || ''; } catch(e) { var href = ''; }
-                        if (!href) continue;
-                        var normalized = href.replace(window.location.origin, '');
-                        if (normalized.indexOf(targetHref) !== -1 || normalized === targetHref) {
-                            targetAnchor = a;
-                            break;
-                        }
-                    }
-                    if (targetAnchor) {
-                        var parentLi = targetAnchor.closest('li');
-                        var insertAfter = parentLi || targetAnchor;
-
-                        // createButton now accepts tooltip text
-                        function createButton(href, label, tooltip) {
-                            var a = document.createElement('a');
-                            a.setAttribute('href', href);
-                            a.setAttribute('title', tooltip || label);
-                            a.setAttribute('aria-label', tooltip || label);
-                            a.style.display = 'block';
-                            a.style.padding = '6px 10px';
-                            a.style.marginTop = '4px';
-                            a.style.marginLeft = parentLi ? '18px' : '10px';
-                            a.style.borderRadius = '4px';
-                            a.style.background = 'transparent';
-                            a.style.color = '#fff';
-                            a.style.textDecoration = 'none';
-                            a.innerText = label;
-                            return a;
-                        }
-
-                        var wrapper = document.createElement('div');
-                        wrapper.className = 'candidate-export-buttons';
-                        wrapper.style.padding = '4px 0 6px 0';
-
-                        // NOTE: tooltip strings below are what will show on hover
-                        var b1 = createButton("{DAT_URL}", "{DAT_LABEL}", "Download encrypted .dat (for Converter)");
-                        var b2 = createButton("{IMG_URL}", "{IMG_LABEL}", "Download ZIP of all candidate photos");
-                        var b3 = createButton("{MARKS_URL}", "{MARKS_LABEL}", "Download Excel with Viva & Practical marks");
-
-                        b1.style.fontWeight = '600'; b2.style.fontWeight = '600'; b3.style.fontWeight = '600';
-
-                        wrapper.appendChild(b1);
-                        wrapper.appendChild(b2);
-                        wrapper.appendChild(b3);
-
-                        if (insertAfter && insertAfter.parentNode) {
-                            if (insertAfter.nextSibling) {
-                                insertAfter.parentNode.insertBefore(wrapper, insertAfter.nextSibling);
-                            } else {
-                                insertAfter.parentNode.appendChild(wrapper);
-                            }
-                        } else {
-                            var sidebar = document.querySelector('#sidebar') || document.querySelector('.module');
-                            if (sidebar) sidebar.appendChild(wrapper);
-                        }
-                    }
-                } catch (e) {
-                    console.error('po-sidebar-insert error', e);
-                }
-            } // end isPo
-
-        }); // onReady
-    } catch (e) {
-        console.error('export_links_js top error', e);
-    }
-})();
-"""
-
-        # Safe substitutions
-        js = js_template.replace("{IS_PO}", "true" if is_po else "false")
-        js = js.replace("{DAT_URL}", dat_url)
-        js = js.replace("{IMG_URL}", img_url)
-        js = js.replace("{MARKS_URL}", marks_url)
-        js = js.replace("{DAT_LABEL}", dat_label.replace('"', '\\"'))
-        js = js.replace("{IMG_LABEL}", img_label.replace('"', '\\"'))
-        js = js.replace("{MARKS_LABEL}", marks_label.replace('"', '\\"'))
-        js = js.replace("{CANDIDATE_CHANGELIST}", candidate_changelist)
-
-        return HttpResponse(js, content_type="application/javascript")
-
-    # Ensure the admin loads our small JS file (served by export_links_js)
-    @property
-    def media(self):
-        try:
-            js_url = reverse("admin:registration_candidateprofile_export_links_js")
-            return forms.Media(js=(js_url,))
-        except Exception:
-            # If reverse fails for any reason, return empty Media to avoid breaking admin
-            return forms.Media()
+    # No extra admin JS; export is accessed via Dashboard button only.

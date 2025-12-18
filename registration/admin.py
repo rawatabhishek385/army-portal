@@ -532,11 +532,13 @@ class CandidateProfileAdmin(admin.ModelAdmin):
 
     # ---------- helpers ----------
     def _is_po(self, request):
-        """Return True if user is PO by group or (optional) role."""
         u = request.user
-        in_po_group = u.groups.filter(name="PO").exists()
-        has_po_role = getattr(u, "role", None) == "PO_ADMIN"
-        return in_po_group or has_po_role
+        return (
+            u.is_superuser or
+            u.groups.filter(name="PO").exists() or
+            getattr(u, "role", None) == "PO_ADMIN"
+        )
+
 
     def _field_exists(self, field_name: str) -> bool:
         """Check if a given field actually exists on CandidateProfile."""

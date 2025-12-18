@@ -1,0 +1,456 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Army Candidate Registration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --army-green:#1e2e22;
+      --army-green-light:#3a4d39;
+      --army-gold:#d4af37;
+      --army-muted:#cfcfcf;
+      --card-bg:rgba(20,30,20,0.88);
+    }
+    html,body{height:100%;margin:0;}
+    body{
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      background: url("{% static 'registration/army.jpg' %}") no-repeat center center fixed;
+      background-size: cover;
+      color:#f0f0f0;
+      display:flex;align-items:flex-start;justify-content:center;
+      padding:30px 10px;position:relative;
+    }
+    body::before{
+      content:"";position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.45);z-index:-1;
+    }
+    .wrap{max-width:1050px;width:100%;}
+    .title{font-size:34px;font-weight:900;text-align:center;margin:6px 0;color:var(--army-gold);text-shadow:2px 2px 8px rgba(0,0,0,0.9);}
+    .subtitle{text-align:center;color:#f0f0f0;margin:0 0 30px;font-size:16px;font-weight:600;text-shadow:1px 1px 6px rgba(0,0,0,0.9);}
+    .card{max-width:760px;margin:0 auto;background:var(--card-bg);border-radius:16px;padding:28px 26px;}
+    .card h2{text-align:center;font-size:20px;margin:0 0 18px;font-weight:800;color:var(--army-gold);}
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+    .grid-1 {grid-template-columns: 1fr;}
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--army-gold);
+      margin-bottom: 6px;
+    }
+
+    /* Inputs + Selects */
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--army-green-light);
+      color: #fff;
+      border: 1.5px solid rgba(255,255,255,0.2);
+      box-sizing: border-box;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--army-gold);
+      outline: none;
+      box-shadow: 0 0 6px var(--army-gold);
+    }
+
+    /* Custom dropdown arrow */
+    select {
+      background-image: url("data:image/svg+xml;utf8,<svg fill='%23d4af37' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 18px;
+      padding-right: 40px;
+      cursor: pointer;
+    }
+    select option {
+      background: var(--army-green);
+      color: #fff;
+    }
+
+    /* Date input calendar icon */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(72%) sepia(85%) saturate(450%) hue-rotate(20deg) brightness(1.2);
+      cursor: pointer;
+      opacity: 1;
+    }
+
+    input[readonly]{background:rgba(255,255,255,0.1);color:#ddd;}
+
+    /* ---------- ACTIONS (buttons) ---------- */
+    .actions {
+      display:flex;
+      justify-content:center;
+      gap:18px;
+      margin-top:14px;
+    }
+    .actions .btn {
+      flex: unset;
+      min-width: 180px;
+      padding: 10px 12px;
+      font-size: 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    /* keep submit a bit larger/highlighted */
+    .actions .btn-primary {
+      min-width: 140px;
+      font-weight: 900;
+    }
+
+    .btn{ /* generic fallback */
+      cursor:pointer;
+      border: none;
+      background: transparent;
+    }
+    .btn-ghost{border:2px solid var(--army-gold);color:var(--army-gold);background:transparent;}
+    .btn-primary{background:var(--army-gold);color:#000;}
+    .btn[disabled] { opacity: .6; cursor: not-allowed; }
+
+    /* footer */
+    .footer-container {
+      position: fixed;
+      bottom: 12px;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between; /* pushes left & right */
+      align-items: center;
+      padding: 0 20px; /* some breathing space from edges */
+      box-sizing: border-box;
+    }
+    .footer-note {
+      color: var(--army-gold);
+      background: rgba(30,46,34,0.9);
+      padding: 6px 14px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.6);
+      font-weight: 700;
+    }
+    .footer-note.developed { font-size: 16px; }
+    .footer-note.reserved { font-size: 13px; font-weight: 600; }
+
+    /* Responsive: stack buttons on small screens */
+    @media (max-width: 720px) {
+      .actions { flex-direction: column; gap: 10px; }
+      .actions .btn { width: 100%; min-width: unset; }
+    }
+
+    input.invalid, select.invalid {
+      border-color: red !important;
+      box-shadow: 0 0 6px red;
+    }
+    .field-error {
+      color: red;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .section-header {
+      color: var(--army-gold);
+      margin: 20px 0 12px 0;
+      font-size: 16px;
+      font-weight: 800;
+      border-bottom: 2px solid rgba(212,175,55,0.3);
+      padding-bottom: 8px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">ARMY CANDIDATE REGISTRATION</div>
+    <div class="subtitle">2 Signal Training Centre Online Exam Portal</div>
+
+    <form id="regForm" class="card" method="post" enctype="multipart/form-data" 
+      action="{% url 'register_candidate' %}" novalidate>
+
+      <input type="hidden" name="username" id="username_hidden">
+      <input type="hidden" name="password" id="password_hidden">
+
+      {% csrf_token %}
+
+      <h2>Registration Form</h2>
+      <div class="grid">
+        <!-- PERSONAL DETAILS SECTION -->
+        <div class="grid-1" style="grid-column:1/-1;">
+          <div class="section-header">Personal Details</div>
+        </div>
+
+        <div><label>Army No (USERNAME) *</label><input type="text" name="army_no" required {% if form.army_no.errors %}class="invalid"{% endif %} value="{{ form.army_no.value|default:'' }}" /><div class="field-error" id="error-army_no">{% for error in form.army_no.errors %}{{ error }}<br>{% endfor %}</div></div>
+        
+        <div>
+          <label for="id_rank">Rank *</label>
+          <select name="rank" id="id_rank" required {% if form.rank.errors %}class="invalid"{% endif %}>
+            <option value="">-- Select Rank --</option>
+            {% for value, label in form.fields.rank.choices %}
+              <option value="{{ value }}" {% if form.rank.value == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="field-error" id="error-rank">{% for error in form.rank.errors %}{{ error }}<br>{% endfor %}</div>
+        </div>
+
+        <div><label>Name *</label><input type="text" name="name" required {% if form.name.errors %}class="invalid"{% endif %} value="{{ form.name.value|default:'' }}" /><div class="field-error" id="error-name">{% for error in form.name.errors %}{{ error }}<br>{% endfor %}</div></div>
+
+        <div>
+          <label for="id_trade_type">Trade Type *</label>
+          <select name="trade_type" id="id_trade_type" required {% if form.trade_type.errors %}class="invalid"{% endif %}>
+            <option value="">-- Select Trade Type --</option>
+            {% for value, label in form.fields.trade_type.choices %}
+              <option value="{{ value }}" {% if form.trade_type.value == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="field-error" id="error-trade_type">{% for error in form.trade_type.errors %}{{ error }}<br>{% endfor %}</div>
+        </div>
+
+        <div>
+          <label>Trade *</label>
+          <select name="trade" id="trade" class="form-control" required {% if form.trade.errors %}class="invalid"{% endif %}>
+            <option value="">-- Select Trade --</option>
+            {% for trade in form.fields.trade.queryset %}
+              <option value="{{ trade.id }}" data-code="{{ trade.code }}" {% if form.trade.value|stringformat:"s" == trade.id|stringformat:"s" %}selected{% endif %}>{{ trade.code }}</option>
+            {% endfor %}
+          </select>
+          <div class="field-error" id="error-trade">{% for error in form.trade.errors %}{{ error }}<br>{% endfor %}</div>
+        </div>
+
+        <div><label>Date of Birth (PASSWORD dd-mm-yyyy) *</label><input type="text" name="dob" required {% if form.dob.errors %}class="invalid"{% endif %} value="{{ form.dob.value|default:'' }}" /><div class="field-error" id="error-dob">{% for error in form.dob.errors %}{{ error }}<br>{% endfor %}</div></div>
+        
+        <div><label>Date of Enrollment *</label><input type="date" name="doe" required {% if form.doe.errors %}class="invalid"{% endif %} value="{{ form.doe.value|default:''|date:'Y-m-d' }}" /><div class="field-error" id="error-doe">{% for error in form.doe.errors %}{{ error }}<br>{% endfor %}</div></div>
+        
+        <div><label>Unit *</label><input type="text" name="unit" required {% if form.unit.errors %}class="invalid"{% endif %} value="{{ form.unit.value|default:'' }}" /><div class="field-error" id="error-unit">{% for error in form.unit.errors %}{{ error }}<br>{% endfor %}</div></div>
+
+        <div><label>Medical Category *</label><input type="text" name="med_cat" required {% if form.med_cat.errors %}class="invalid"{% endif %} value="{{ form.med_cat.value|default:'' }}" /><div class="field-error" id="error-med_cat">{% for error in form.med_cat.errors %}{{ error }}<br>{% endfor %}</div></div>
+
+        <div>
+          <label for="id_cat">Category *</label>
+          <select name="cat" id="id_cat" required {% if form.cat.errors %}class="invalid"{% endif %}>
+            <option value="">-- Select Category --</option>
+            {% for value, label in form.fields.cat.choices %}
+              <option value="{{ value }}" {% if form.cat.value == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="field-error" id="error-cat">{% for error in form.cat.errors %}{{ error }}<br>{% endfor %}</div>
+        </div>
+
+        <div>
+          <label for="id_command">Command *</label>
+          <select name="command" id="id_command" required {% if form.command.errors %}class="invalid"{% endif %}>
+            <option value="">-- Select Command --</option>
+            {% for value, label in form.fields.command.choices %}
+              <option value="{{ value }}" {% if form.command.value == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="field-error" id="error-command">{% for error in form.command.errors %}{{ error }}<br>{% endfor %}</div>
+        </div>
+
+        <!-- EXAM DETAILS SECTION -->
+        <div class="grid-1" style="grid-column:1/-1;margin-top:20px;">
+          <div class="section-header">Exam Details</div>
+        </div>
+
+
+
+        <div class="grid-1" style="grid-column:1/-1;">
+          <label>Exam Center *</label>
+          <select name="exam_center" required {% if form.exam_center.errors %}class="invalid"{% endif %}>
+            <option value="">-- Select Exam Center --</option>
+            <option>SWC-Jaipur</option><option>SWC-Hissar</option><option>SWC-Bathinda</option>
+            <option>SWC-Sriganganagar</option><option>SWC-Bikaner</option><option>SWC-Suratgarh</option>
+            <option>SWC-Kota</option><option>ARTRAC-Port Blair</option>
+            <option>ARTRAC-Ahmednagar</option><option>ARTRAC-Bangalore</option><option>ARTRAC-Chennai</option>
+            <option>SWC-Pune MINTSD</option><option>ARTRAC-MCTE Mhow</option>
+            <option>SC-Secunderabad</option><option>SC-Jhansi</option><option>SC-Ahmedabad</option>
+            <option>SC-Jodhpur</option><option>SC-Saugor</option><option>SC-Bhopal</option><option>SC-Pune</option>
+            <option>EC-Binaguri</option><option>EC-Kolkata</option><option>EC-Missamari</option>
+            <option>EC-Rangapahar</option><option>EC-Dinjan</option><option>EC-Gangtok</option>
+            <option>EC-Leimakhong</option><option>EC-Tenga</option><option>EC-Panagarh</option>
+            <option>EC-Ranchi</option><option>EC-Likabali</option><option>EC-Tejpur</option>
+            <option>EC-Kalimpong</option>
+            <option>WC-Jalandhar</option><option>WC-Ambala</option><option>WC-Delhi</option>
+            <option>WC-Amritsar</option><option>WC-Ferozepur</option><option>WC-Patiala</option>
+            <option>WC-Jammu</option><option>WC-Pathankot</option><option>WC-Chandimandir</option>
+            <option>WC-Meerut</option>
+            <option>CC-Agra</option><option>CC-Bareilly</option><option>CC-Jabalpur</option>
+            <option>CC-Lucknow</option><option>CC-Ranikhet</option><option>CC-Dehradun</option>
+            <option>NC-Udhampur</option><option>NC-Baramula</option><option>NC-Kargil</option>
+            <option>NC-Leh</option><option>NC-Srinagar</option><option>NC-Kupwara</option>
+            <option>NC-Allahabad</option><option>NC-Rajouri</option><option>NC-Akhnoor</option>
+            <option>NC-Nagrota</option><option>NC-Palampur</option><option>NC-Mathura</option>
+            <option>NC-Karu</option>
+          </select>
+          <div class="field-error" id="error-exam_center">{% for error in form.exam_center.errors %}{{ error }}<br>{% endfor %}</div>
+        </div>
+
+
+
+
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">🚀 Register Candidate</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="footer-container">
+    <div class="footer-note developed">
+      Developed by SLOG Solutions Pvt Ltd and 2STC
+    </div>
+    <div class="footer-note reserved">
+      All Rights Reserved @ SLOG Solutions Pvt Ltd
+    </div>
+  </div>
+
+<script>
+  // ===== Trade mapping (moved to top for priority) =====
+  const tradeMapping = {
+  "TTC": { primary:{qualification:"Technician Data Network",duration:"1200",credits:"40"} },
+  "OCC": { primary:{qualification:"Technician Communication Center & Radio System",duration:"1200",credits:"40"} },
+  "DTMN": { primary:{qualification:"Technician Draughtsman Topographical",duration:"1200",credits:"40"} },
+  "EFS": { primary:{qualification:"Technician Electrical System",duration:"1200",credits:"40"} },
+  "DMV": { primary:{qualification:"Commercial Vehicle Driver (Heavy Motor Veh Driver) Light Motor Veh Driver",duration:"1350",credits:"45"} },
+  "LMN": { primary:{qualification:"Technician Network System Support",duration:"1200",credits:"40"} },
+  "CLK SD": { primary:{qualification:"Office Supervisor",duration:"1260",credits:"42"} },
+  "STEWARD": { primary:{qualification:"Food & Beverage Service Associatesociate",duration:"1350",credits:"45"} },
+  "WASHERMAN": { primary:{qualification:"Laundry Associate",duration:"1350",credits:"45"} },
+  "HOUSE KEEPER": { primary:{qualification:"Housekeeping Support Staff",duration:"1200",credits:"40"} },
+  "CHEFCOM": { primary:{qualification:"Commis Chef (Advanced)",duration:"1200",credits:"40"} },
+  "MESS KEEPER": { primary:{qualification:"Camp Coordinator",duration:"1350",credits:"45"} },
+  "SKT": { primary:{qualification:"Store Keeper Technician",duration:"1350",credits:"45"} },
+  "Musician": { primary:{qualification:"Music Performer",duration:"1200",credits:"40"} },
+  "ARTSN WW": { primary:{qualification:"Technician Wood Works",duration:"1350",credits:"45"} },
+  "Hair Dresser": { primary:{qualification:"N/A",duration:"N/A",credits:"N/A"} },
+  "SP Staff": { primary:{qualification:"N/A",duration:"N/A",credits:"N/A"} },
+
+  // ✅ Newly added trades
+  "JE NE": { primary:{qualification:"Junior Engineer Network",duration:"1200",credits:"40"} },
+  "JE SYS": { primary:{qualification:"Junior Engineer Systems",duration:"1200",credits:"40"} },
+  "OP CIPH": { primary:{qualification:"Operator Cipher",duration:"1200",credits:"40"} },
+  "OSS": { primary:{qualification:"OSS",duration:"1200",credits:"40"} }
+};
+
+  // ===== Get all elements =====
+  const tradeSelect = document.getElementById("trade");
+
+
+  // Form elements
+  const armyNoInput = document.querySelector('input[name="army_no"]');
+  const dobInput = document.querySelector('input[name="dob"]');
+  const usernameHidden = document.getElementById('username_hidden');
+  const passwordHidden = document.getElementById('password_hidden');
+
+  // ===== Trade mapping function =====
+  function applyTradeMapping() {
+    const selectedOption = tradeSelect.options[tradeSelect.selectedIndex];
+    const tradeCode = selectedOption ? selectedOption.dataset.code : "";
+    const data = tradeMapping[tradeCode];
+
+    // Update buttons after trade mapping to ensure validation runs properly
+    setTimeout(updateButtons, 100);
+  }
+
+  // ===== Hidden username/password sync =====
+  function syncCreds() {
+    if (usernameHidden) usernameHidden.value = (armyNoInput?.value || '').trim();
+    if (passwordHidden) passwordHidden.value = (dobInput?.value || '');
+  }
+
+  [armyNoInput, dobInput].forEach(el => el && el.addEventListener('input', syncCreds));
+  syncCreds(); // initial
+
+  // ===== Validation function =====
+  function validateField(el) {
+    const errorEl = document.getElementById(`error-${el.name}`);
+    let message = '';
+
+    if (el.required) {
+      if (el.type === 'file') {
+        if (!el.files || el.files.length === 0) {
+          message = 'This field is required.';
+        }
+      } else if (el.tagName === 'SELECT') {
+        if (!el.value) {
+          message = 'Please select an option.';
+        }
+      } else {
+        if (!el.value.trim()) {
+          message = 'This field is required.';
+        }
+      }
+    }
+
+    if (el.name === 'doe') {
+      const val = el.value;
+      if (val) {
+        const selectedDate = new Date(val);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (selectedDate >= today) {
+          message = 'Date must be before today.';
+        }
+      }
+    }
+
+    if (el.name === 'dob') {
+      const val = el.value.trim();
+      if (val && !/^\d{2}-\d{2}-\d{4}$/.test(val)) {
+        message = 'Format: dd-mm-yyyy';
+      }
+    }
+
+    if (message) {
+      el.classList.add('invalid');
+      if (errorEl) errorEl.textContent = message;
+    } else {
+      el.classList.remove('invalid');
+      if (errorEl) errorEl.textContent = '';
+    }
+
+    return !message;
+  }
+
+  // ===== Form validation =====
+  function isFormValid() {
+    let isValid = true;
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      isValid &= validateField(el);
+    });
+    return isValid;
+  }
+
+  // ===== Button update function =====
+  function updateButtons() {
+    const submitBtn = document.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = !isFormValid();
+    }
+  }
+
+  // ===== Event listeners =====
+  if (tradeSelect) {
+    tradeSelect.addEventListener('change', applyTradeMapping);
+  }
+
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    el.addEventListener('input', updateButtons);
+    el.addEventListener('change', updateButtons);
+  });
+
+  // Initial setup
+  applyTradeMapping();
+  updateButtons();
+</script>
+</body>
+</html>

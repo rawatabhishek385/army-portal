@@ -154,20 +154,32 @@ class QuestionPaperAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
         if obj.qp_assign:
-            # Link only questions imported from that upload (trade based)
+            # Link only questions imported from that specific upload (by upload timestamp and trade)
             try:
                 # safe: qp_assign may have .trade or be None
                 assigned_trade = obj.qp_assign.trade
+                upload_time = obj.qp_assign.uploaded_at
+                
+                # Get questions that were created at or after this upload time
+                # This ensures we only link questions from this specific upload
                 if assigned_trade:
-                    questions = Question.objects.filter(trade=assigned_trade)
+                    questions = Question.objects.filter(
+                        trade=assigned_trade,
+                        created_at__gte=upload_time
+                    ).order_by('id')
                 else:
-                    # Fallback: if trade not set, do nothing (or customize as needed)
-                    questions = Question.objects.filter(trade=None)
+                    # Fallback: if trade not set, use timestamp only
+                    questions = Question.objects.filter(
+                        trade=None,
+                        created_at__gte=upload_time
+                    ).order_by('id')
             except Exception:
                 questions = Question.objects.none()
 
             created_count = 0
+            skipped_count = 0
             for i, q in enumerate(questions, start=1):
+                # Use get_or_create to prevent duplicate mappings
                 paper_question, created = PaperQuestion.objects.get_or_create(
                     paper=obj,
                     question=q,
@@ -175,9 +187,13 @@ class QuestionPaperAdmin(admin.ModelAdmin):
                 )
                 if created:
                     created_count += 1
+                else:
+                    skipped_count += 1
 
             if created_count > 0:
-                messages.success(request, f"Linked {created_count} questions to this paper")
+                messages.success(request, f"Linked {created_count} new question(s) to this paper")
+            if skipped_count > 0:
+                messages.info(request, f"Skipped {skipped_count} question(s) already linked to this paper")
 
     def delete_model(self, request, obj):
         """

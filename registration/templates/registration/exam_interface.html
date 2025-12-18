@@ -745,6 +745,44 @@ document.addEventListener("DOMContentLoaded", () => {
   let examSubmitted = false;
   let isWindowFocused = true;
   let altPressed = false;
+  
+  // ---------------------------
+  // CSRF Token Management
+  // ---------------------------
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  
+  function getCSRFToken() {
+    return getCookie('csrftoken') || document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+  }
+  
+  // Ensure CSRF token is present in form
+  const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+  if (!csrfInput) {
+    const form = document.getElementById('exam-form');
+    if (form) {
+      const token = getCSRFToken();
+      if (token) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'csrfmiddlewaretoken';
+        input.value = token;
+        form.appendChild(input);
+      }
+    }
+  }
 
   // ---------------------------
   // Fullscreen helpers (always return a Promise)
@@ -976,7 +1014,22 @@ document.addEventListener("DOMContentLoaded", () => {
     hideConfirmationModal();
     examSubmitted = true;
     exitFullScreen();
-    document.getElementById("exam-form").submit();
+    const form = document.getElementById("exam-form");
+    if (form) {
+      // Ensure CSRF token is present
+      const csrfInput = form.querySelector('[name=csrfmiddlewaretoken]');
+      if (!csrfInput) {
+        const token = getCSRFToken();
+        if (token) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'csrfmiddlewaretoken';
+          input.value = token;
+          form.appendChild(input);
+        }
+      }
+      form.submit();
+    }
   });
 
   document.getElementById('cancelSubmit').addEventListener('click', () => {
@@ -1018,7 +1071,22 @@ document.addEventListener("DOMContentLoaded", () => {
     examSubmitted = true;
     exitFullScreen();
     alert("Time is up! Submitting your exam.");
-    document.getElementById("exam-form")?.submit();
+    const form = document.getElementById("exam-form");
+    if (form) {
+      // Ensure CSRF token is present
+      const csrfInput = form.querySelector('[name=csrfmiddlewaretoken]');
+      if (!csrfInput) {
+        const token = getCSRFToken();
+        if (token) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'csrfmiddlewaretoken';
+          input.value = token;
+          form.appendChild(input);
+        }
+      }
+      form.submit();
+    }
   };
 
   // ---------------------------
@@ -1096,7 +1164,22 @@ document.addEventListener("DOMContentLoaded", () => {
         examSubmitted = true;
         exitFullScreen();
         alert("Time is up! Submitting your exam.");
-        document.getElementById("exam-form")?.submit();
+        const form = document.getElementById("exam-form");
+    if (form) {
+      // Ensure CSRF token is present
+      const csrfInput = form.querySelector('[name=csrfmiddlewaretoken]');
+      if (!csrfInput) {
+        const token = getCSRFToken();
+        if (token) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'csrfmiddlewaretoken';
+          input.value = token;
+          form.appendChild(input);
+        }
+      }
+      form.submit();
+    }
       }
 
       timer -= 1;

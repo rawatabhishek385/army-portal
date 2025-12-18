@@ -4,7 +4,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth import logout
 from django.core.exceptions import ValidationError
 from django.views.decorators.cache import never_cache
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.contrib import messages
 from django.db import transaction
 from django.utils import timezone
@@ -77,11 +77,17 @@ def exam_interface(request):
     Starts (or resumes) an ExamSession for the logged-in candidate and serves
     the randomized questions assigned to that session.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     candidate_profile = get_object_or_404(CandidateProfile, user=request.user)
 
     # Determine candidate trade and category
     trade_obj = getattr(candidate_profile, "trade", None)
     candidate_category = getattr(candidate_profile, "cat", None)
+    
+    logger.info(f"Exam interface accessed by candidate: {candidate_profile.army_no}, "
+                f"Category: {candidate_category}, Trade: {trade_obj}")
 
     # Paper selection priority:
     # 1) Match category + trade + is_active=True (most specific)
@@ -93,35 +99,70 @@ def exam_interface(request):
     
     # Priority 1: Category + Trade + Active
     if candidate_category and trade_obj:
-        paper = QuestionPaper.objects.filter(
+        papers = QuestionPaper.objects.filter(
             category=candidate_category,
             trade=trade_obj,
             is_active=True
-        ).annotate(num_qs=Count("paperquestion")).filter(num_qs__gt=0).order_by("-id").first()
+        ).annotate(
+            num_qs=Count("paperquestion", filter=Q(paperquestion__question__is_active=True))
+        ).filter(num_qs__gt=0).order_by("-id")
+        
+        if papers.exists():
+            paper = papers.first()
+            logger.info(f"Found paper (Priority 1): {paper.id} with {paper.num_qs} questions")
     
     # Priority 2: Category + Active (any trade)
     if not paper and candidate_category:
-        paper = QuestionPaper.objects.filter(
+        papers = QuestionPaper.objects.filter(
             category=candidate_category,
             is_active=True
-        ).annotate(num_qs=Count("paperquestion")).filter(num_qs__gt=0).order_by("-id").first()
+        ).annotate(
+            num_qs=Count("paperquestion", filter=Q(paperquestion__question__is_active=True))
+        ).filter(num_qs__gt=0).order_by("-id")
+        
+        if papers.exists():
+            paper = papers.first()
+            logger.info(f"Found paper (Priority 2): {paper.id} with {paper.num_qs} questions")
     
     # Priority 3: Trade + Active (any category)
     if not paper and trade_obj:
-        paper = QuestionPaper.objects.filter(
+        papers = QuestionPaper.objects.filter(
             trade=trade_obj,
             is_active=True
-        ).annotate(num_qs=Count("paperquestion")).filter(num_qs__gt=0).order_by("-id").first()
+        ).annotate(
+            num_qs=Count("paperquestion", filter=Q(paperquestion__question__is_active=True))
+        ).filter(num_qs__gt=0).order_by("-id")
+        
+        if papers.exists():
+            paper = papers.first()
+            logger.info(f"Found paper (Priority 3): {paper.id} with {paper.num_qs} questions")
     
     # Priority 4: Any active paper with questions (fallback)
     if not paper:
-        paper = QuestionPaper.objects.filter(
+        papers = QuestionPaper.objects.filter(
             is_active=True
-        ).annotate(num_qs=Count("paperquestion")).filter(num_qs__gt=0).order_by("-id").first()
+        ).annotate(
+            num_qs=Count("paperquestion", filter=Q(paperquestion__question__is_active=True))
+        ).filter(num_qs__gt=0).order_by("-id")
+        
+        if papers.exists():
+            paper = papers.first()
+            logger.info(f"Found paper (Priority 4): {paper.id} with {paper.num_qs} questions")
 
     if not paper:
-        messages.warning(request, "No exam papers are available. Please contact admin or try later.")
-        return redirect("login")
+        # Log detailed information for debugging
+        all_papers = QuestionPaper.objects.filter(is_active=True)
+        logger.warning(f"No paper found. Active papers count: {all_papers.count()}")
+        for p in all_papers:
+            q_count = p.paperquestion_set.filter(question__is_active=True).count()
+            logger.warning(f"Paper {p.id}: category={p.category}, trade={p.trade}, questions={q_count}")
+        
+        messages.error(
+            request, 
+            f"No exam papers are available for your profile (Category: {candidate_category or 'Not set'}, "
+            f"Trade: {trade_obj or 'Not set'}). Please contact admin."
+        )
+        return redirect("candidate_dashboard")
 
     # 2) Try to find an existing session for this user + paper (resume) OR create a new randomized session
     session = ExamSession.objects.filter(paper=paper, user=request.user).order_by("-started_at").first()
@@ -157,6 +198,15 @@ def exam_interface(request):
     # 3) Get questions from the session
     exam_questions_qs = session.questions
     questions = [eq.question for eq in exam_questions_qs if eq.question.is_active]
+    
+    # Validate that we have questions
+    if not questions:
+        logger.error(f"Session {session.id} has no active questions. Paper: {paper.id}")
+        messages.error(
+            request, 
+            "No questions are available for this exam. Please contact admin."
+        )
+        return redirect("candidate_dashboard")
 
     duration_seconds = int(session.duration.total_seconds()) if session.duration else (
         int(paper.exam_duration.total_seconds()) if paper.exam_duration else 7200
@@ -164,6 +214,10 @@ def exam_interface(request):
 
     # POST: candidate submitting answers
     if request.method == "POST":
+        # Verify CSRF token explicitly
+        from django.middleware.csrf import get_token
+        csrf_token = get_token(request)
+        
         if session.completed_at:
             messages.info(request, "Your exam has already been submitted.")
             try:
@@ -172,13 +226,21 @@ def exam_interface(request):
                 pass
             return redirect("exam_success")
 
+        # Verify session_id matches to prevent tampering
+        submitted_session_id = request.POST.get("session_id")
+        if submitted_session_id and str(submitted_session_id) != str(session.id):
+            logger.warning(f"Session ID mismatch: expected {session.id}, got {submitted_session_id}")
+            messages.error(request, "Invalid session. Please restart the exam.")
+            return redirect("candidate_dashboard")
+
         with transaction.atomic():
             for key, value in request.POST.items():
                 if key.startswith("question_"):
                     _, qid = key.split("_", 1)
                     try:
-                        question = Question.objects.get(id=qid)
+                        question = Question.objects.get(id=qid, is_active=True)
                     except Question.DoesNotExist:
+                        logger.warning(f"Question {qid} not found or inactive")
                         continue
 
                     CandidateAnswer.objects.update_or_create(
@@ -195,11 +257,13 @@ def exam_interface(request):
                 else:
                     session.completed_at = timezone.now()
                     session.save(update_fields=["completed_at"])
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error finishing session: {e}")
                 try:
                     session.completed_at = timezone.now()
                     session.save(update_fields=["completed_at"])
-                except Exception:
+                except Exception as e2:
+                    logger.error(f"Failed to save completed_at: {e2}")
                     pass
 
         try:
@@ -283,8 +347,27 @@ def export_answers_pdf(request, candidate_id):
 
 
 @login_required
+@never_cache
+@login_required
 def clear_shift_and_start_exam(request):
-    candidate = get_object_or_404(CandidateProfile, user=request.user)
-    candidate.shift = None
-    candidate.save()
-    return redirect("exam_interface")
+    """
+    Clear the shift assignment and redirect to exam interface.
+    This allows candidates to start the exam regardless of shift timing.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        candidate = get_object_or_404(CandidateProfile, user=request.user)
+        logger.info(f"Starting exam for candidate: {candidate.army_no}")
+        
+        # Clear shift to allow exam start
+        candidate.shift = None
+        candidate.save(update_fields=['shift'])
+        
+        logger.info(f"Shift cleared for candidate: {candidate.army_no}, redirecting to exam")
+        return redirect("exam_interface")
+    except Exception as e:
+        logger.error(f"Error in clear_shift_and_start_exam: {e}", exc_info=True)
+        messages.error(request, f"Error starting exam: {str(e)}")
+        return redirect("candidate_dashboard")

@@ -159,11 +159,27 @@ class CandidateProfile(models.Model):
 
     @property
     def can_start_exam(self):
+        """
+        Check if candidate can start exam.
+        Allows starting anytime within 3 hours from shift start time.
+        """
         if not self.shift:
             return False
+        
+        from datetime import timedelta
+        
+        # Combine shift date and start time
         shift_datetime = datetime.combine(self.shift.date, self.shift.start_time)
         shift_datetime = timezone.make_aware(shift_datetime, timezone.get_current_timezone())
-        return timezone.now() >= shift_datetime
+        
+        # Calculate end time (3 hours after start)
+        shift_end_datetime = shift_datetime + timedelta(hours=3)
+        
+        # Get current time
+        now = timezone.now()
+        
+        # Allow starting if current time is between shift start and shift end (3 hours later)
+        return shift_datetime <= now <= shift_end_datetime
 
     def __str__(self):
         return f"{self.army_no} - {self.name}"

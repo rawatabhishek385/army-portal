@@ -182,8 +182,10 @@ def load_questions_from_excel_data(excel_data: bytes):
 
 @transaction.atomic
 def import_questions_from_dicts(records, default_trade=None):
-    """Import questions from list of dictionaries"""
+    """Import questions from list of dictionaries, skipping duplicates"""
     created = []
+    skipped = []
+    
     for q in records:
         try:
             # Prefer the trade selected on the upload form
@@ -193,15 +195,32 @@ def import_questions_from_dicts(records, default_trade=None):
             if trade is None and q.get("trade"):
                 trade = Trade.objects.filter(name__icontains=q["trade"]).first()
             
-            obj = Question.objects.create(
+            # Check if a question with the same text already exists
+            # Use case-insensitive comparison to catch duplicates with different casing
+            existing = Question.objects.filter(text__iexact=q["text"]).first()
+            
+            if existing:
+                # Question already exists, skip it
+                skipped.append(existing)
+                continue
+            
+            # Create new question only if it doesn't exist
+            obj, was_created = Question.objects.get_or_create(
                 text=q["text"],
-                part=q.get("part", "A"),
-                marks=q.get("marks", 1),
-                options=q.get("options"),
-                correct_answer=q.get("correct_answer"),
-                trade=trade,  # This will now use the selected trade
+                defaults={
+                    "part": q.get("part", "A"),
+                    "marks": q.get("marks", 1),
+                    "options": q.get("options"),
+                    "correct_answer": q.get("correct_answer"),
+                    "trade": trade,
+                }
             )
-            created.append(obj)
+            
+            if was_created:
+                created.append(obj)
+            else:
+                skipped.append(obj)
+                
         except Exception as e:
             print(f"Error creating question: {e}")
             continue

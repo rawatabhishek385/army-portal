@@ -412,18 +412,44 @@
                         <span class="value">{{ candidate.shift }}</span>
                     </div>
                     <div class="exam-action">
+                        <div class="confirm-wrapper">
+                            <input type="checkbox" id="confirm-details" name="correct_detail">
+                            <label for="confirm-details">I confirm the details are correct.</label>
+                        </div>
                         {% if candidate.can_start_exam %}
-                            <div class="confirm-wrapper">
-                                <input type="checkbox" id="confirm-details" name="correct_detail">
-                                <label for="confirm-details">I confirm the details are correct.</label>
-                            </div>
-                            <button id="start-exam-btn" class="start-btn disabled" disabled onclick="window.location.href='{% url 'clear_shift_and_start_exam' %}'">
+                            <button id="start-exam-btn" class="start-btn disabled" disabled data-exam-url="{% url 'clear_shift_and_start_exam' %}">
                                 <i class="fas fa-play-circle"></i> Start Exam
                             </button>
+                            {% if candidate.shift %}
+                            <div id="exam-status-info" style="margin-top: 10px; color: #4caf50; font-size: 14px;">
+                                <p><strong>Shift Details:</strong></p>
+                                <p>Date: {{ candidate.shift.date }}</p>
+                                <p>Start Time: {{ candidate.shift.start_time }}</p>
+                                <p>End Time (3 hrs window): <span id="shift-end-time">Calculating...</span></p>
+                                <p>Current time: <span id="current-time"></span></p>
+                                <p style="color: #4caf50;"><strong>✓ You can start the exam now (within 3-hour window).</strong></p>
+                            </div>
+                            {% endif %}
                         {% else %}
-                            <button class="start-btn disabled" disabled>
-                                <i class="fas fa-clock"></i> Start Exam (Not Yet Available)
+                            <button id="start-exam-btn-unavailable" class="start-btn" data-exam-url="{% url 'clear_shift_and_start_exam' %}" data-can-start="false">
+                                {% if candidate.shift %}
+                                <i class="fas fa-clock"></i> Start Exam (Outside Shift Window - Click to Start Anyway)
+                                {% else %}
+                                <i class="fas fa-clock"></i> Start Exam (No Shift Assigned - Click to Start)
+                                {% endif %}
                             </button>
+                            <div id="exam-status-info" style="margin-top: 10px; color: #ff9800; font-size: 14px;">
+                                {% if candidate.shift %}
+                                    <p><strong>Shift Details:</strong></p>
+                                    <p>Date: {{ candidate.shift.date }}</p>
+                                    <p>Start Time: {{ candidate.shift.start_time }}</p>
+                                    <p>End Time (3 hrs window): <span id="shift-end-time">Calculating...</span></p>
+                                    <p>Current time: <span id="current-time"></span></p>
+                                    <p style="color: #ff5722;"><strong>⚠ You are outside the 3-hour window, but you can still start the exam.</strong></p>
+                                {% else %}
+                                    <p style="color: #ff5722;">No shift assigned. You can still start the exam.</p>
+                                {% endif %}
+                            </div>
                         {% endif %}
                     </div>
                 </div>
@@ -468,19 +494,170 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('Dashboard loaded');
+            
             const checkbox = document.getElementById('confirm-details');
             const startBtn = document.getElementById('start-exam-btn');
-            if (checkbox && startBtn) {
-                checkbox.addEventListener('change', function() {
-                    if (this.checked) {
-                        startBtn.classList.remove('disabled');
-                        startBtn.removeAttribute('disabled');
+            const unavailableBtn = document.getElementById('start-exam-btn-unavailable');
+            
+            // Update current time display and shift end time
+            function updateTime() {
+                const timeElement = document.getElementById('current-time');
+                if (timeElement) {
+                    const now = new Date();
+                    timeElement.textContent = now.toLocaleString();
+                }
+                
+                // Calculate and display shift end time (3 hours after start)
+                {% if candidate.shift %}
+                const shiftEndElement = document.getElementById('shift-end-time');
+                if (shiftEndElement) {
+                    const shiftDate = new Date('{{ candidate.shift.date|date:"Y-m-d" }}');
+                    const shiftTime = '{{ candidate.shift.start_time }}'.split(':');
+                    const shiftStart = new Date(shiftDate);
+                    shiftStart.setHours(parseInt(shiftTime[0]), parseInt(shiftTime[1]), 0, 0);
+                    
+                    // Add 3 hours
+                    const shiftEnd = new Date(shiftStart);
+                    shiftEnd.setHours(shiftEnd.getHours() + 3);
+                    
+                    shiftEndElement.textContent = shiftEnd.toLocaleString();
+                    
+                    // Check if we're within the 3-hour window
+                    const now = new Date();
+                    const canStart = now >= shiftStart && now <= shiftEnd;
+                    console.log('Can start exam:', canStart, {
+                        now: now.toLocaleString(),
+                        shiftStart: shiftStart.toLocaleString(),
+                        shiftEnd: shiftEnd.toLocaleString()
+                    });
+                }
+                {% endif %}
+            }
+            updateTime();
+            setInterval(updateTime, 1000);
+            
+            // Handle checkbox for both buttons
+            if (checkbox) {
+                console.log('Checkbox found');
+                
+                const handleCheckboxChange = function() {
+                    console.log('Checkbox changed:', this.checked);
+                    
+                    // Enable/disable the available button
+                    if (startBtn) {
+                        if (this.checked) {
+                            startBtn.classList.remove('disabled');
+                            startBtn.removeAttribute('disabled');
+                            console.log('Start exam button enabled');
+                        } else {
+                            startBtn.classList.add('disabled');
+                            startBtn.setAttribute('disabled', 'disabled');
+                            console.log('Start exam button disabled');
+                        }
+                    }
+                    
+                    // Update unavailable button style (but keep it clickable)
+                    if (unavailableBtn) {
+                        if (this.checked) {
+                            unavailableBtn.style.opacity = '1';
+                            unavailableBtn.style.cursor = 'pointer';
+                            console.log('Unavailable button styled as enabled');
+                        } else {
+                            unavailableBtn.style.opacity = '0.6';
+                            unavailableBtn.style.cursor = 'not-allowed';
+                            console.log('Unavailable button styled as disabled');
+                        }
+                    }
+                };
+                
+                checkbox.addEventListener('change', handleCheckboxChange);
+                
+                // Add click handler for available button
+                if (startBtn) {
+                    startBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const url = this.getAttribute('data-exam-url');
+                        const isDisabled = this.hasAttribute('disabled');
+                        
+                        console.log('Start exam button clicked');
+                        console.log('URL:', url);
+                        console.log('Is disabled:', isDisabled);
+                        console.log('Checkbox checked:', checkbox.checked);
+                        
+                        if (!isDisabled && checkbox.checked) {
+                            console.log('Redirecting to exam...');
+                            window.location.href = url;
+                        } else {
+                            console.warn('Cannot start exam:', {
+                                disabled: isDisabled,
+                                checkboxChecked: checkbox.checked
+                            });
+                            alert('Please confirm the details are correct before starting the exam.');
+                        }
+                    });
+                }
+            }
+            
+            // Handle unavailable button (allow starting anyway)
+            if (unavailableBtn) {
+                console.log('Unavailable button found');
+                console.log('Can start exam:', unavailableBtn.getAttribute('data-can-start'));
+                console.log('Shift info:', document.getElementById('exam-status-info')?.textContent);
+                
+                unavailableBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('data-exam-url');
+                    const checkboxChecked = checkbox ? checkbox.checked : false;
+                    
+                    console.log('Start Exam (unavailable) button clicked');
+                    console.log('URL:', url);
+                    console.log('Checkbox checked:', checkboxChecked);
+                    
+                    // Check if checkbox is checked
+                    if (!checkboxChecked) {
+                        console.warn('Checkbox not checked');
+                        alert('Please confirm the details are correct before starting the exam.');
+                        return;
+                    }
+                    
+                    // Show warning but allow proceeding
+                    const proceed = confirm(
+                        'Your scheduled exam time has not arrived yet. Do you want to start the exam anyway?'
+                    );
+                    
+                    if (proceed) {
+                        console.log('User confirmed, redirecting to exam...');
+                        window.location.href = url;
                     } else {
-                        startBtn.classList.add('disabled');
-                        startBtn.setAttribute('disabled', 'disabled');
+                        console.log('User cancelled');
                     }
                 });
             }
+            
+            // Log candidate info for debugging
+            {% if candidate %}
+            console.log('Candidate info:', {
+                armyNo: '{{ candidate.army_no }}',
+                name: '{{ candidate.name }}',
+                shift: {% if candidate.shift %}'{{ candidate.shift.date }} {{ candidate.shift.start_time }}'{% else %}null{% endif %},
+                shiftId: {% if candidate.shift %}{{ candidate.shift.id }}{% else %}null{% endif %},
+                canStartExam: {{ candidate.can_start_exam|yesno:"true,false" }},
+                trade: '{{ candidate.trade }}',
+                category: '{{ candidate.cat }}'
+            });
+            
+            {% if candidate.shift %}
+            console.log('Shift details:', {
+                date: '{{ candidate.shift.date }}',
+                startTime: '{{ candidate.shift.start_time }}',
+                examCenter: '{{ candidate.shift.exam_center }}',
+                canStartExam: {{ candidate.can_start_exam|yesno:"true,false" }}
+            });
+            {% else %}
+            console.warn('No shift assigned to candidate');
+            {% endif %}
+            {% endif %}
         });
     </script>
 </body>

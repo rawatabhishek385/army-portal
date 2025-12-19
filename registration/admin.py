@@ -34,13 +34,6 @@ admin.site.index_template = "registration/admin_index.html"
 
 
 def wipe_exam_data_view(request):
-    """
-    Admin-only view to delete all exam-related data while keeping:
-      - accounts.User
-      - registration.CandidateProfile
-      - reference.Trade
-    Only records are deleted; tables stay intact.
-    """
     if not request.user.is_superuser:
         return HttpResponseForbidden("Not allowed.")
 
@@ -62,18 +55,55 @@ def wipe_exam_data_view(request):
         }
 
         with transaction.atomic():
-            # First clear models that PROTECT-link to Question so Questions can be removed cleanly.
             try:
                 from results.models import CandidateAnswer
                 from exams.models import Answer as ExamAnswer
-
                 CandidateAnswer.objects.all().delete()
                 ExamAnswer.objects.all().delete()
             except Exception:
-                # If these models are missing for any reason, don't block the wipe.
                 pass
 
-            # Now iterate over all models and delete everything except the protected ones.
+            try:
+                from exams.models import ExamAttempt, ExamAssignment, Shift
+                ExamAttempt.objects.all().delete()
+                ExamAssignment.objects.all().delete()
+            except Exception:
+                pass
+
+            try:
+                from questions.models import ExamQuestion, ExamSession
+                ExamQuestion.objects.all().delete()
+                ExamSession.objects.all().delete()
+            except Exception:
+                pass
+
+            try:
+                from registration.models import CandidateProfile
+                CandidateProfile.objects.update(shift=None)
+            except Exception:
+                pass
+
+            try:
+                from exams.models import Shift
+                Shift.objects.all().delete()
+            except Exception:
+                pass
+
+            try:
+                from centers.models import Center
+                Center.objects.all().delete()
+            except Exception:
+                pass
+
+            try:
+                from questions.models import PaperQuestion, Question, QuestionPaper, QuestionUpload
+                PaperQuestion.objects.all().delete()
+                Question.objects.all().delete()
+                QuestionPaper.objects.all().delete()
+                QuestionUpload.objects.all().delete()
+            except Exception:
+                pass
+
             for model in apps.get_models():
                 app_label = model._meta.app_label
                 model_name = model.__name__
@@ -93,7 +123,6 @@ def wipe_exam_data_view(request):
 
         return redirect("admin:index")
 
-    # GET: show confirmation page
     from django.shortcuts import render
 
     return render(request, "registration/wipe_data_confirm.html")

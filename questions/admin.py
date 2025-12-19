@@ -42,10 +42,16 @@ class QuestionPaperAdmin(admin.ModelAdmin):
             'admin/js/disable_trade.js',
         )
     form = QuestionPaperAdminForm
-    list_display = ("question_paper", "category", "trade", "qp_assign", "is_active")
+    list_display = ("question_paper", "category", "trade", "qp_assign", "is_active", "get_question_count")
     inlines = [PaperQuestionInline]
-    search_fields = ("question_paper",)
+    search_fields = ("question_paper", "category")
     fields = ("question_paper", "category", "trade", "exam_duration", "qp_assign", "is_active")
+    list_filter = ("category", "trade", "is_active")
+    
+    def get_question_count(self, obj):
+        """Display number of questions linked to this paper"""
+        return obj.paperquestion_set.count()
+    get_question_count.short_description = "Questions"
     readonly_fields = ("is_common",)  # optional: show is_common read-only if you want
 
     # NOTE: Removed reference to external static admin/js/disable_trade.js
@@ -154,26 +160,37 @@ class QuestionPaperAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
         if obj.qp_assign:
-            # Link only questions imported from that specific upload (by upload timestamp and trade)
+            # Link questions imported from that specific upload
+            # PRIORITY: Category-based mapping (if paper has category, link all questions)
+            # FALLBACK: Trade-based mapping (for backward compatibility)
             try:
-                # safe: qp_assign may have .trade or be None
-                assigned_trade = obj.qp_assign.trade
                 upload_time = obj.qp_assign.uploaded_at
                 
-                # Get questions that were created at or after this upload time
-                # This ensures we only link questions from this specific upload
-                if assigned_trade:
+                # PRIORITY: If paper has a category, link ALL questions from the upload
+                # (regardless of question's trade - category-based mapping)
+                if obj.category:
+                    # Link all questions from this upload (category-based paper)
                     questions = Question.objects.filter(
-                        trade=assigned_trade,
                         created_at__gte=upload_time
                     ).order_by('id')
+                    messages.info(request, f"Linking all questions from upload to category-based paper (Category: {obj.get_category_display()})")
                 else:
-                    # Fallback: if trade not set, use timestamp only
-                    questions = Question.objects.filter(
-                        trade=None,
-                        created_at__gte=upload_time
-                    ).order_by('id')
-            except Exception:
+                    # FALLBACK: Use trade-based linking (for backward compatibility)
+                    assigned_trade = obj.qp_assign.trade
+                    if assigned_trade:
+                        questions = Question.objects.filter(
+                            trade=assigned_trade,
+                            created_at__gte=upload_time
+                        ).order_by('id')
+                        messages.info(request, f"Linking questions by trade (Trade: {assigned_trade.name})")
+                    else:
+                        # If no trade set, link all questions from upload
+                        questions = Question.objects.filter(
+                            created_at__gte=upload_time
+                        ).order_by('id')
+                        messages.info(request, "Linking all questions from upload (no category or trade specified)")
+            except Exception as e:
+                messages.error(request, f"Error linking questions: {str(e)}")
                 questions = Question.objects.none()
 
             created_count = 0

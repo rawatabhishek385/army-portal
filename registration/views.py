@@ -89,16 +89,30 @@ def exam_interface(request):
     logger.info(f"Exam interface accessed by candidate: {candidate_profile.army_no}, "
                 f"Category: {candidate_category}, Trade: {trade_obj}")
 
-    # Paper selection priority:
-    # 1) Match category + trade + is_active=True (most specific)
-    # 2) Match category + is_active=True (category-specific but any trade)
-    # 3) Match trade + is_active=True (trade-specific, any category)
-    # 4) Any active paper with questions (fallback)
+    # Paper selection priority (Category-based mapping):
+    # 1) Match category + is_active=True (PRIMARY: category-based mapping)
+    # 2) Match category + trade + is_active=True (more specific if both match)
+    # 3) Match trade + is_active=True (fallback: trade-based for backward compatibility)
+    # 4) Any active paper with questions (last resort fallback)
     
     paper = None
     
-    # Priority 1: Category + Trade + Active
-    if candidate_category and trade_obj:
+    # Priority 1: Category + Active (PRIMARY - category-based mapping)
+    # This is the main mapping method - candidates see papers based on their category
+    if candidate_category:
+        papers = QuestionPaper.objects.filter(
+            category=candidate_category,
+            is_active=True
+        ).annotate(
+            num_qs=Count("paperquestion", filter=Q(paperquestion__question__is_active=True))
+        ).filter(num_qs__gt=0).order_by("-id")
+        
+        if papers.exists():
+            paper = papers.first()
+            logger.info(f"Found paper (Priority 1 - Category-based): {paper.id} with {paper.num_qs} questions for category {candidate_category}")
+    
+    # Priority 2: Category + Trade + Active (more specific match if both category and trade match)
+    if not paper and candidate_category and trade_obj:
         papers = QuestionPaper.objects.filter(
             category=candidate_category,
             trade=trade_obj,
@@ -109,22 +123,9 @@ def exam_interface(request):
         
         if papers.exists():
             paper = papers.first()
-            logger.info(f"Found paper (Priority 1): {paper.id} with {paper.num_qs} questions")
+            logger.info(f"Found paper (Priority 2 - Category+Trade): {paper.id} with {paper.num_qs} questions")
     
-    # Priority 2: Category + Active (any trade)
-    if not paper and candidate_category:
-        papers = QuestionPaper.objects.filter(
-            category=candidate_category,
-            is_active=True
-        ).annotate(
-            num_qs=Count("paperquestion", filter=Q(paperquestion__question__is_active=True))
-        ).filter(num_qs__gt=0).order_by("-id")
-        
-        if papers.exists():
-            paper = papers.first()
-            logger.info(f"Found paper (Priority 2): {paper.id} with {paper.num_qs} questions")
-    
-    # Priority 3: Trade + Active (any category)
+    # Priority 3: Trade + Active (fallback: trade-based for backward compatibility)
     if not paper and trade_obj:
         papers = QuestionPaper.objects.filter(
             trade=trade_obj,
@@ -135,9 +136,9 @@ def exam_interface(request):
         
         if papers.exists():
             paper = papers.first()
-            logger.info(f"Found paper (Priority 3): {paper.id} with {paper.num_qs} questions")
+            logger.info(f"Found paper (Priority 3 - Trade-based fallback): {paper.id} with {paper.num_qs} questions")
     
-    # Priority 4: Any active paper with questions (fallback)
+    # Priority 4: Any active paper with questions (last resort fallback)
     if not paper:
         papers = QuestionPaper.objects.filter(
             is_active=True
@@ -147,7 +148,7 @@ def exam_interface(request):
         
         if papers.exists():
             paper = papers.first()
-            logger.info(f"Found paper (Priority 4): {paper.id} with {paper.num_qs} questions")
+            logger.info(f"Found paper (Priority 4 - Any active): {paper.id} with {paper.num_qs} questions")
 
     if not paper:
         # Log detailed information for debugging

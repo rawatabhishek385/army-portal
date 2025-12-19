@@ -64,24 +64,23 @@ class QuestionPaperAdmin(admin.ModelAdmin):
         """
         urls = super().get_urls()
         custom_urls = [
-            path('qp-for-trade/', self.admin_site.admin_view(self.qp_for_trade_view),
-                 name='questions-questionpaper-qp-for-trade'),
+            path('qp-for-category/', self.admin_site.admin_view(self.qp_for_category_view),
+                 name='questions-questionpaper-qp-for-category'),
         ]
         # Ensure custom urls are available under the model admin path
         return custom_urls + urls
 
-    def qp_for_trade_view(self, request):
+    def qp_for_category_view(self, request):
         """
         JSON view: expects ?trade_id=<id>
         Returns: {"ok": true, "qp": {"id": 123, "label": "Primary - OCC"}} or {"ok": false, "qp": null}
         """
-        trade_id = request.GET.get('trade_id')
-        if not trade_id:
-            return JsonResponse({'ok': False, 'error': 'missing trade_id', 'qp': None})
+        category = request.GET.get('category')
+        if not category:
+            return JsonResponse({'ok': False, 'error': 'missing category', 'qp': None})
 
         try:
-            # Find the latest QuestionUpload for this trade
-            upload = QuestionUpload.objects.filter(trade_id=trade_id).order_by('-uploaded_at').first()
+            upload = QuestionUpload.objects.filter(category=category).order_by('-uploaded_at').first()
             if not upload:
                 return JsonResponse({'ok': False, 'qp': None})
 
@@ -103,28 +102,25 @@ class QuestionPaperAdmin(admin.ModelAdmin):
         """
         Form = super().get_form(request, obj, **kwargs)
 
-        # find the exact field names in the form (in case your form uses different names)
-        trade_field_name = None
+        category_field_name = None
         qp_assign_field_name = None
         for fname in Form.base_fields:
-            if fname == 'trade' or fname.lower().endswith('trade'):
-                trade_field_name = fname
+            if fname == 'category' or fname.lower().endswith('category'):
+                category_field_name = fname
             if fname == 'qp_assign' or fname.lower().endswith('qp_assign'):
                 qp_assign_field_name = fname
 
         # Attach inline JS only if both fields exist
-        if trade_field_name and qp_assign_field_name:
-            # endpoint relative to model admin page (resolved under the same path)
-            endpoint = '/admin/questions/questionpaper/qp-for-trade/'
+        if category_field_name and qp_assign_field_name:
+            endpoint = '/admin/questions/questionpaper/qp-for-category/'
 
 
-            # Build the JS that will be placed into the trade field's onchange attribute
             js = (
                 "(function(el){"
                 "  var val = el.value;"
                 "  var assign = document.getElementById('id_%(assign)s');"
                 "  if(!val){ if(assign){ assign.value = ''; assign.dispatchEvent(new Event('change')); } return; }"
-                "  var url = '%(endpoint)s' + '?trade_id=' + encodeURIComponent(val);"
+                "  var url = '%(endpoint)s' + '?category=' + encodeURIComponent(val);"
                 "  fetch(url, {credentials: 'same-origin'})"
                 "    .then(function(r){ return r.json(); })"
                 "    .then(function(data){"
@@ -134,16 +130,16 @@ class QuestionPaperAdmin(admin.ModelAdmin):
                 "           if(assign){ assign.value = ''; try{ assign.dispatchEvent(new Event('change')); }catch(e){} }"
                 "       }"
                 "    }).catch(function(err){"
-                "       console.error('qp-for-trade fetch error', err);"
+                "       console.error('qp-for-category fetch error', err);"
                 "    });"
                 "})(this);"
             ) % {'assign': qp_assign_field_name, 'endpoint': endpoint}
 
-            existing = Form.base_fields[trade_field_name].widget.attrs.get('onchange', '')
+            existing = Form.base_fields[category_field_name].widget.attrs.get('onchange', '')
             if existing:
-                Form.base_fields[trade_field_name].widget.attrs['onchange'] = existing + ';' + js
+                Form.base_fields[category_field_name].widget.attrs['onchange'] = existing + ';' + js
             else:
-                Form.base_fields[trade_field_name].widget.attrs['onchange'] = js
+                Form.base_fields[category_field_name].widget.attrs['onchange'] = js
 
             # Optionally run once on initial form render: if an existing trade value is present,
             # the onchange will be triggered on the client when user interacts; if you want it to run
@@ -175,20 +171,10 @@ class QuestionPaperAdmin(admin.ModelAdmin):
                     ).order_by('id')
                     messages.info(request, f"Linking all questions from upload to category-based paper (Category: {obj.get_category_display()})")
                 else:
-                    # FALLBACK: Use trade-based linking (for backward compatibility)
-                    assigned_trade = obj.qp_assign.trade
-                    if assigned_trade:
-                        questions = Question.objects.filter(
-                            trade=assigned_trade,
-                            created_at__gte=upload_time
-                        ).order_by('id')
-                        messages.info(request, f"Linking questions by trade (Trade: {assigned_trade.name})")
-                    else:
-                        # If no trade set, link all questions from upload
-                        questions = Question.objects.filter(
-                            created_at__gte=upload_time
-                        ).order_by('id')
-                        messages.info(request, "Linking all questions from upload (no category or trade specified)")
+                    questions = Question.objects.filter(
+                        created_at__gte=upload_time
+                    ).order_by('id')
+                    messages.info(request, "Linking all questions from upload")
             except Exception as e:
                 messages.error(request, f"Error linking questions: {str(e)}")
                 questions = Question.objects.none()
@@ -245,13 +231,13 @@ class QuestionPaperAdmin(admin.ModelAdmin):
 class QuestionUploadAdmin(admin.ModelAdmin):
     form = QuestionUploadForm
 
-    list_display = ("file", "trade", "uploaded_at", "get_questions_count")
+    list_display = ("file", "category", "uploaded_at", "get_questions_count")
     search_fields = ("file",)
     readonly_fields = ("uploaded_at",)
     ordering = ("-uploaded_at",)
     list_per_page = 20
 
-    fields = ("file", "decryption_password", "trade")
+    fields = ("file", "decryption_password", "category")
 
     def get_questions_count(self, obj):
         if obj.uploaded_at:
@@ -261,18 +247,10 @@ class QuestionUploadAdmin(admin.ModelAdmin):
 
 
     def save_model(self, request, obj, form, change):
-        # store selected trade on the QuestionUpload instance
-        if "trade" in form.cleaned_data:
-            obj.trade = form.cleaned_data["trade"]
-
         super().save_model(request, obj, form, change)
 
-        if not change and obj.trade:
-            # Assign trade to all questions created after upload
-            Question.objects.filter(created_at__gte=obj.uploaded_at).update(trade=obj.trade)
-
-            messages.info(request,
-                f"Questions imported successfully and assigned to trade: {obj.trade.name}")
+        if not change and obj.category:
+            messages.info(request, f"Questions imported successfully for category: {obj.get_category_display()}")
 
     def response_add(self, request, obj, post_url_redirect=None):
         response = super().response_add(request, obj, post_url_redirect)
@@ -283,9 +261,8 @@ class QuestionUploadAdmin(admin.ModelAdmin):
                 time.sleep(1)  # Give signals time to process
                 questions_count = Question.objects.filter(created_at__gte=obj.uploaded_at).count()
                 if questions_count > 0:
-                    trade_info = f" to {obj.trade.name}" if obj.trade else ""
                     messages.success(request,
-                        f"Successfully imported {questions_count} questions{trade_info} from {obj.file.name}")
+                        f"Successfully imported {questions_count} questions for {obj.get_category_display()} from {obj.file.name}")
                 else:
                     messages.warning(request,
                         "Upload completed but no questions were imported. Please check the file format and password.")

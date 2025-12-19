@@ -2,7 +2,7 @@
 
 from django import forms
 from .models import QuestionUpload, QuestionPaper
-from reference.models import Trade
+from registration.models import CAT_CHOICES
 from .services import is_encrypted_dat, decrypt_dat_content, load_questions_from_excel_data
 
 class QuestionUploadForm(forms.ModelForm):
@@ -15,17 +15,15 @@ class QuestionUploadForm(forms.ModelForm):
         help_text="Password required for encrypted DAT files"
     )
     
-    trade = forms.ModelChoiceField(
-        queryset=Trade.objects.order_by('name'),
-        required=False,
+    category = forms.ChoiceField(
+        choices=CAT_CHOICES,
+        required=True,
         widget=forms.Select(attrs={'class': 'form-control'}),
-        help_text="Note: This field is for trade-specific papers only.",
-        empty_label="-- Select Trade (Optional) --"
     )
 
     class Meta:
         model = QuestionUpload
-        fields = ["file", "decryption_password", "trade"]
+        fields = ["file", "decryption_password", "category"]
         widgets = {
             'file': forms.FileInput(attrs={'class': 'form-control'})
         }
@@ -98,8 +96,7 @@ class QuestionUploadForm(forms.ModelForm):
         if 'decryption_password' in self.cleaned_data:
             instance.decryption_password = self.cleaned_data['decryption_password']
         
-        # Set the trade from form data
-        instance.trade = self.cleaned_data.get('trade')
+        instance.category = self.cleaned_data.get('category')
         
         if commit:
             instance.save()

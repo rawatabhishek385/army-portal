@@ -58,12 +58,12 @@ class QuestionUpload(models.Model):
     file = models.FileField(upload_to="uploads/questions/", validators=[validate_dat_file])
     uploaded_at = models.DateTimeField(auto_now_add=True)
     decryption_password = models.CharField(max_length=255, default="default123")
-    trade = models.ForeignKey(
-        Trade,
-        on_delete=models.SET_NULL,
+    category = models.CharField(
+        max_length=255,
+        choices=CAT_CHOICES,
         null=True,
         blank=True,
-        help_text="If set, all imported questions will be tagged with this trade."
+        help_text="Select the candidate category this upload belongs to."
     )
 
     class Meta:

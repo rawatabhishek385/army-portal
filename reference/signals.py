@@ -11,13 +11,13 @@ def seed_trades(sender, **kwargs):
 
     Trade = apps.get_model('reference', 'Trade')
     trades = [
-    "TTC", "OCC", "DTMN", "EFS", "DMV", "LMN", "CLK SD",
+    "TTC", "OCC", "DTMN", "EFS", "DVR MT", "LMN", "CLK SD",
     "STEWARD", "WASHERMAN", "HOUSE KEEPER", "CHEFCOM",
     "MESS KEEPER", "SKT", "Musician", "ARTSN WW",
     "Hair Dresser", "SP Staff",
 
     # ✅ Newly added trades
-    "JE NE", "JE SYS", "OP CIPH", "OSS",
+    "JE NE", "JE SYS", "OP CIPH", "OSS", "DR",
 ]
 
 

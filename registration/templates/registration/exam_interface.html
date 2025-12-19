@@ -572,6 +572,25 @@
     <!-- Top overlay to block fullscreen controls -->
     <div class="fullscreen-overlay" id="topOverlay"></div>
 
+    <!-- Fullscreen Exit Warning Modal -->
+    <div id="fsExitModal" class="modal" style="display:none; z-index: 10000;">
+        <div class="modal-content">
+            <div class="modal-icon warning" style="color: #f39c12; font-size: 48px; margin-bottom: 20px;">⚠️</div>
+            <h2>Fullscreen Exited</h2>
+            <p>You have exited fullscreen mode. <br>
+            If this was accidental, please click "Return to Exam" immediately.<br>
+            Otherwise, your exam will be terminated.</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-confirm" id="returnToExamBtn">
+                    Return to Exam
+                </button>
+                <button class="modal-btn modal-btn-cancel" id="terminateExamBtn">
+                    Terminate Exam
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirmation Modal -->
     <div id="confirmationModal" class="modal">
         <div class="modal-content">
@@ -886,14 +905,44 @@ document.addEventListener("DOMContentLoaded", () => {
       document.msFullscreenElement;
 
     if (!inFs && !examSubmitted) {
-      alert("You exited fullscreen. Your exam has been terminated.");
-      window.location.replace("/candidate/login");
+      // Show custom modal instead of immediate termination
+      const fsModal = document.getElementById('fsExitModal');
+      if (fsModal) {
+          fsModal.style.display = 'block';
+      } else {
+          // Fallback
+          if(confirm("You exited fullscreen. Click OK to Resume, Cancel to Terminate.")) {
+              enterFullScreen();
+          } else {
+              window.location.replace("/candidate/login");
+          }
+      }
     }
   }
   document.addEventListener("fullscreenchange", onFsChange);
   document.addEventListener("webkitfullscreenchange", onFsChange);
   document.addEventListener("mozfullscreenchange", onFsChange);
   document.addEventListener("MSFullscreenChange", onFsChange);
+
+  // FS Modal Listeners
+  const returnBtn = document.getElementById('returnToExamBtn');
+  const termBtn = document.getElementById('terminateExamBtn');
+  
+  if (returnBtn) {
+      returnBtn.addEventListener('click', () => {
+          document.getElementById('fsExitModal').style.display = 'none';
+          enterFullScreen().catch(err => {
+              console.error("Failed to re-enter fullscreen:", err);
+              alert("Could not re-enter fullscreen. Please try again.");
+          });
+      });
+  }
+
+  if (termBtn) {
+      termBtn.addEventListener('click', () => {
+          window.location.replace("/candidate/login");
+      });
+  }
 
   // ---------------------------
   // Block Alt+Tab and other window switching

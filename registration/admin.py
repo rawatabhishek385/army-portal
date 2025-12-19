@@ -901,20 +901,20 @@ class CandidateProfileAdmin(admin.ModelAdmin):
 
     def export_all_dat_view(self, request):
         # Only PO can export DAT
-        if not self._is_po(request):
+        if not (self._is_po(request) or request.user.is_superuser):
             return HttpResponseForbidden("Not allowed.")
         qs = self.get_queryset(request)
         return export_candidates_dat(self, request, qs)
 
     def export_all_images_view(self, request):
         # Only PO can export photos ZIP
-        if not self._is_po(request):
+        if not (self._is_po(request) or request.user.is_superuser):
             return HttpResponseForbidden("Not allowed.")
         return export_all_candidate_images(self, request)
 
     def export_all_marks_view(self, request):
         # Only PO can export Marks
-        if not self._is_po(request):
+        if not (self._is_po(request) or request.user.is_superuser):
             return HttpResponseForbidden("Not allowed.")
         qs = self.get_queryset(request)
         return export_marks_excel(self, request, qs)
